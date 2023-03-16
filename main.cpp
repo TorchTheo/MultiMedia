@@ -12,7 +12,9 @@ struct octNode
 	long long rSum, gSum, bSum;//红色分量、绿色分量、蓝色分量灰度值的和
 	bool isLeaf;//是否是叶子结点
 	int depth;//本节点的深度
-	octNode* child[8];//8个子结点的指针数组 
+	octNode* child[8];//8个子结点的指针数组
+	octNode() = default;
+	octNode(int d) : cnt(1), rSum(0), gSum(0), bSum(0), isLeaf(false), depth(d) {}
 };
 
 class octTree
@@ -41,7 +43,20 @@ octTree::~octTree()
 void octTree::insertColor(uint8 r, uint8 g, uint8 b)
 {
 	//....
-
+	this->colors ++;
+	octNode* node = root;
+	for (int i = 7; i >= 0; i--) {
+		int index = ((r >> i) & 0x1) * 4 + ((g >> i) & 0x1) * 2 + ((b >> i) & 0x1);
+		if (node->child[index]->isLeaf) {
+			node->child[index]->cnt++;
+			node->child[index]->rSum += r;
+			node->child[index]->gSum += g;
+			node->child[index]->bSum += b;
+		}
+		else if (node->child[index] == NULL) {
+			node->child[index] = new octNode(node->depth + 1);
+		}
+	}
 }
 
 //根据现有的八叉树，选择256个颜色作为最终的调色板中的颜色
