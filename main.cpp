@@ -4,10 +4,15 @@
 #include <cstdio>
 #include <cmath>
 #include <vector>
+#include <queue>
 #include <algorithm>
 using namespace std;
 
 typedef unsigned char uint8;
+
+int dis(uint8 r, uint8 g, uint8 b, RGBQUAD* pal, int i);
+
+int leafs = 0;
 
 struct octNode
 {
@@ -17,39 +22,35 @@ struct octNode
 	int depth;//本节点的深度
 	int pos;
 	octNode* child[8];//8个子结点的指针数组
-	octNode* fa, bro_left, bro_right;
+	octNode* fa, *bro_left, *bro_right;
 	octNode() = default;
-	octNode(int d) : cnt(1), rSum(0), gSum(0), bSum(0), isLeaf(false), depth(d), fa(NULL), bro_left(NULL), bro_right(NULL) {}	
-	octNode(int d, int r, int g, int b) : cnt(1), rSum(r), gSum(g), bSum(b), isLeaf(true), depth(d), fa(NULL), bro_left(NULL), bro_right(NULL) {}
+	octNode(int d) : cnt(1), rSum(0), gSum(0), bSum(0), isLeaf(false), depth(d), fa(NULL), bro_left(NULL), bro_right(NULL) { for (int i = 0; i < 8; i++) child[i] = NULL; }
+	octNode(int d, int r, int g, int b) : cnt(1), rSum(r), gSum(g), bSum(b), isLeaf(true), depth(d), fa(NULL), bro_left(NULL), bro_right(NULL) { for (int i = 0; i < 8; i++) child[i] = NULL; }
+
 };
 
 class octTree
 {
 public:
-	octTree(){};
-	octTree(int maxColorNum){maxColors=maxColorNum;}
+	octTree() {};
+	octTree(int maxColorNum) { maxColors = maxColorNum; root = new octNode(0); }
 	~octTree();
 
 	void insertColor(uint8 r, uint8 g, uint8 b);						//插入一个颜色
-	uint8 generatePalette(RGBQUAD *pal);						//生成调色板
+	uint8 generatePalette(RGBQUAD* pal);						//生成调色板
 private:
-	octNode *root;														//八叉树的根
+	octNode* root;														//八叉树的根
 	int colors;															//当前的颜色总数
 	int maxColors;														//最大颜色数
 	void reduceOctTree();
-	void add2vec(vector<octNode*>&vec, octNode*);
+	void add2vec(vector<octNode*>& vec, octNode*);
+	int getLeaves(octNode*);
 };
 
 //释放八叉树的内存空间
 octTree::~octTree()
 {
 	//To do....
-	for (int i = 0; i < 8; i++) {
-		delete root->child[i];
-		root->child[i] = NULL;
-	}
-	delete root;
-	root = NULL;
 }
 
 //往八叉树中添加一个像素的颜色
@@ -60,14 +61,15 @@ void octTree::insertColor(uint8 r, uint8 g, uint8 b)
 	for (int i = 7; i >= 0; i--) {
 		int index = ((r >> i) & 0x1) * 4 + ((g >> i) & 0x1) * 2 + ((b >> i) & 0x1);
 		if (node->child[index] == NULL) {
-			if (i != 0)  {
+			if (i != 0) {
 				node->child[index] = new octNode(node->depth + 1);
 			}
 			else {
 				node->child[index] = new octNode(node->depth + 1, r, g, b);
-				this->colors ++;
+				this->colors++;
+				leafs++;
 			}
-			
+
 			node->child[index]->fa = node;
 			node->child[index]->pos = index;
 			for (int j = index - 1; j >= 0; j--)
@@ -75,12 +77,13 @@ void octTree::insertColor(uint8 r, uint8 g, uint8 b)
 					node->child[index]->bro_left = node->child[j];
 					break;
 				}
-			for (int j = index + 1, j < 8; j++)
+			for (int j = index + 1; j < 8; j++)
 				if (node->child[j] != NULL) {
 					node->child[index]->bro_right = node->child[j];
 					break;
 				}
-		} else {
+		}
+		else {
 			node->child[index]->cnt++;
 		}
 		if (node->child[index]->isLeaf) {
@@ -93,79 +96,127 @@ void octTree::insertColor(uint8 r, uint8 g, uint8 b)
 }
 
 //根据现有的八叉树，选择256个颜色作为最终的调色板中的颜色
-uint8 octTree::generatePalette(RGBQUAD *pal)
+uint8 octTree::generatePalette(RGBQUAD* pal)
 {
 	//....
 	reduceOctTree();
-	// todo
-	return 0;
+	printf("Leaves: %d\n", getLeaves(root));
+	int i = 0;
+	queue<octNode*> q;
+	q.push(root);
+	while (!q.empty()) {
+		auto node = q.front();
+		q.pop();
+		if (node->isLeaf) {
+			pal[i].rgbRed = node->rSum / node->cnt;
+			pal[i].rgbGreen = node->gSum / node->cnt;
+			pal[i].rgbBlue = node->bSum / node->cnt;
+			pal[i].rgbReserved = 0;
+			i++;
+		}
+		else {
+			for (int i = 0; i < 8; i++) {
+				if (node->child[i] != NULL)
+					q.push(node->child[i]);
+			}
+		}
+	}
+	return i;
+}
+
+int octTree::getLeaves(octNode* node) {
+	if (node == NULL)
+		return 0;
+	if (node->isLeaf)
+		return 1;
+	int c = 0;
+	for (int i = 0; i < 8; i++)
+		c += getLeaves(node->child[i]);
+	return c;
 }
 
 void octTree::reduceOctTree() {
 	vector<octNode*> vec;
 	add2vec(vec, this->root);
-	while (colors > 256) {
-		sort(vec.begin(), vec.end(), [](octNode* a, octNode* b) {
-			if (a->depth == b->depth)
-				return a->cnt < b->cnt;
-			return a->depth > b->depth;
-		});
-		auto it = vec.begin();
-		if (*it->bro_left != NULL && *it->bro_right != NULL) {
-			if (*it->bro_left->cnt <= *it->bro_right->cnt) {
-				*it->bro_left->bro_right = *it->bro_right;
-				*it->bro_right->bro_left = *it->bro_left;
-				*it->bro_left->cnt += *it->cnt;
-				*it->bro_left->rSum += *it->rSum;
-				*it->bro_left->gSum += *it->gSum;
-				*it->bro_left->bSum += *it->bSum;
-				delete *it;
-				*it = NULL;
-				vec.erase(it);
-			} else {
-				*it->bro_left->bro_right = *it->bro_right;
-				*it->bro_right->bro_left = *it->bro_left;
-				*it->bro_right->cnt += *it->cnt;
-				*it->bro_right->rSum += *it->rSum;
-				*it->bro_right->gSum += *it->gSum;
-				*it->bro_right->bSum += *it->bSum;
-				delete *it;
-				*it = NULL;
-				vec.erase(it);
+	while (colors > maxColors) {
+		/*vector<octNode*>::iterator it = vec.begin();
+		for (auto i = vec.begin(); i != vec.end(); i++) {
+			if ((*i)->depth < (*it)->depth || ((*i)->depth == (*it)->depth && (*i)->cnt < (*it)->cnt)) {
+				it = i;
 			}
-		} else if (*it->bro_left == NULL && *it->bro_right != NULL) {
-			*it->bro_right->bro_left = NULL;
-			*it->bro_right->cnt += *it->cnt;
-			*it->bro_right->rSum += *it->rSum;
-			*it->bro_right->gSum += *it->gSum;
-			*it->bro_right->bSum += *it->bSum;
-			delete *it;
-			*it = NULL;
-			vec.erase(it);
-		} else if (*it->bro_left != NULL && *it->bro_right == NULL) {
-			*it->bro_left->bro_right = NULL;
-			*it->bro_left->cnt += *it->cnt;
-			*it->bro_left->rSum += *it->rSum;
-			*it->bro_left->gSum += *it->gSum;
-			*it->bro_left->bSum += *it->bSum;
-			delete *it;
-			*it = NULL;
-			vec.erase(it);
-		} else {
-			*it->fa->isLeaf = true;
-			*it->fa->cnt += *it->cnt;
-			*it->fa->rSum += *it->rSum;
-			*it->fa->gSum += *it->gSum;
-			*it->fa->bSum += *it->bSum;
-			vec.emplace_back(*it->fa);
-			delete *it;
-			*it = NULL;
-			vec.erase(it);
+		}*/
+		int ind = 0;
+		for (int i = 0; i < vec.size(); i++)
+			if (vec[i]->depth < vec[ind]->depth || (vec[i]->depth == vec[ind]->depth && vec[i]->cnt < vec[ind]->cnt))
+				ind = i;
+		if (vec[ind]->bro_left != NULL && vec[ind]->bro_right != NULL) {
+			if (vec[ind]->bro_left->cnt <= vec[ind]->bro_right->cnt) {
+				vec[ind]->isLeaf = false;
+				vec[ind]->bro_left->bro_right = vec[ind]->bro_right;
+				vec[ind]->bro_right->bro_left = vec[ind]->bro_left;
+				vec[ind]->bro_left->cnt += vec[ind]->cnt;
+				vec[ind]->bro_left->rSum += vec[ind]->rSum;
+				vec[ind]->bro_left->gSum += vec[ind]->gSum;
+				vec[ind]->bro_left->bSum += vec[ind]->bSum;
+				delete vec[ind];
+				vec[ind] = NULL;
+				vec.erase(vec.begin() + ind);
+				colors--;
+			}
+			else {
+				vec[ind]->isLeaf = false;
+				vec[ind]->bro_left->bro_right = vec[ind]->bro_right;
+				vec[ind]->bro_right->bro_left = vec[ind]->bro_left;
+				vec[ind]->bro_right->cnt += vec[ind]->cnt;
+				vec[ind]->bro_right->rSum += vec[ind]->rSum;
+				vec[ind]->bro_right->gSum += vec[ind]->gSum;
+				vec[ind]->bro_right->bSum += vec[ind]->bSum;
+				delete vec[ind];
+				vec[ind] = NULL;
+				vec.erase(vec.begin() + ind);
+				colors--;
+			}
+		}
+		else if (vec[ind]->bro_left == NULL && vec[ind]->bro_right != NULL) {
+			vec[ind]->isLeaf = false;
+			vec[ind]->bro_right->bro_left = NULL;
+			vec[ind]->bro_right->cnt += vec[ind]->cnt;
+			vec[ind]->bro_right->rSum += vec[ind]->rSum;
+			vec[ind]->bro_right->gSum += vec[ind]->gSum;
+			vec[ind]->bro_right->bSum += vec[ind]->bSum;
+			delete vec[ind];
+			vec[ind] = NULL;
+			vec.erase(vec.begin() + ind);
+			colors--;
+		}
+		else if (vec[ind]->bro_left != NULL && vec[ind]->bro_right == NULL) {
+			vec[ind]->isLeaf = false;
+			vec[ind]->bro_left->bro_right = NULL;
+			vec[ind]->bro_left->cnt += vec[ind]->cnt;
+			vec[ind]->bro_left->rSum += vec[ind]->rSum;
+			vec[ind]->bro_left->gSum += vec[ind]->gSum;
+			vec[ind]->bro_left->bSum += vec[ind]->bSum;
+			delete vec[ind];
+			vec[ind] = NULL;
+			vec.erase(vec.begin() + ind);
+			colors--;
+		}
+		else {
+			vec[ind]->isLeaf = false;
+			vec[ind]->fa->isLeaf = true;
+			vec[ind]->fa->cnt += vec[ind]->cnt;
+			vec[ind]->fa->rSum += vec[ind]->rSum;
+			vec[ind]->fa->gSum += vec[ind]->gSum;
+			vec[ind]->fa->bSum += vec[ind]->bSum;
+			vec.push_back(vec[ind]->fa);
+			delete vec[ind];
+			vec[ind] = NULL;
+			vec.erase(vec.begin() + ind);
 		}
 	}
 }
 
-void octTree::add2vec(vector<octNode*>&vec, octNode* node) {
+void octTree::add2vec(vector<octNode*>& vec, octNode* node) {
 	if (node == NULL)
 		return;
 	if (node->isLeaf)
@@ -177,32 +228,50 @@ void octTree::add2vec(vector<octNode*>&vec, octNode* node) {
 }
 
 //从调色板中选出与给定颜色最接近的颜色
-uint8 selectClosestColor(uint8 r, uint8 g, uint8 b, RGBQUAD *pal)
+uint8 selectClosestColor(uint8 r, uint8 g, uint8 b, RGBQUAD* pal)
 {
-	return (uint8)0;//给定某颜色，返回其在调色板中最近似颜色的索引值；
+	int index = 0;
+	int temp = dis(r, g, b, pal, index);
+	for (int i = 0; i < 256; i++) {
+		int t = dis(r, g, b, pal, i);
+		if (t < temp) {
+			temp = t;
+			index = i;
+		}
+	}
+	return (uint8_t)index;
 }
 
-int main(int argc, char *argv[])
+int dis(uint8 r, uint8 g, uint8 b, RGBQUAD* pal, int i) {
+	int R = (int)(r - pal[i].rgbRed) * (r - pal[i].rgbRed);
+	int G = (int)(g - pal[i].rgbGreen) * (g - pal[i].rgbGreen);
+	int B = (int)(b - pal[i].rgbBlue) * (b - pal[i].rgbBlue);
+	return R + G + B;
+}
+
+int main(int argc, char* argv[])
 {
 	if (argc < 3)
 	{
 		printf("using: exe[0], input file[1], output file[2]\n");
 		return -1;
 	}
-	BITMAPFILEHEADER bf, *pbf;//输入、输出文件的文件头
-	BITMAPINFOHEADER bi, *pbi;//输入、输出文件的信息头
-	RGBQUAD *pRGBQuad;//待生成的调色板指针
-	uint8 *pImage;//转换后的图象数据
+	BITMAPFILEHEADER bf, * pbf;//输入、输出文件的文件头
+	BITMAPINFOHEADER bi, * pbi;//输入、输出文件的信息头
+	RGBQUAD* pRGBQuad;//待生成的调色板指针
+	uint8* pImage;//转换后的图象数据
 	DWORD bfSize;//文件大小
 	LONG biWidth, biHeight;//图象宽度、高度
 	DWORD biSizeImage;//图象的大小，以字节为单位，每行字节数必须是4的整数倍
 	unsigned long biFullWidth;//每行字节数必须是4的整数倍
 
 	//打开输入文件
-	char *inputName, *outputName;
-	FILE *fpIn, *fpOut;
+	char* inputName, * outputName;
+	FILE* fpIn, * fpOut;
 	inputName = argv[1];
 	outputName = argv[2];
+	/*const char* inputName = "test_in.bmp";
+	const char* outputName = "out.bmp";*/
 	printf("Opening %s ... ", inputName);
 	if (!(fpIn = fopen(inputName, "rb")))
 	{
@@ -228,8 +297,8 @@ int main(int argc, char *argv[])
 	biWidth = bi.biWidth;
 	biHeight = bi.biHeight;
 	biFullWidth = ceil(biWidth / 4.) * 4;//bmp文件每一行的字节数必须是4的整数倍
-	biSizeImage = biFullWidth*biHeight;
-	bfSize = biFullWidth*biHeight + 54 + 256 * 4;//图象文件的大小，包含文件头、信息头
+	biSizeImage = biFullWidth * biHeight;
+	bfSize = biFullWidth * biHeight + 54 + 256 * 4;//图象文件的大小，包含文件头、信息头
 
 	//设置输出文件的BITMAPFILEHEADER
 	pbf = new BITMAPFILEHEADER;
@@ -269,13 +338,13 @@ int main(int argc, char *argv[])
 
 	//构建颜色八叉树
 	printf("Building Color OctTree ...  ");
-	octTree *tree;
+	octTree* tree;
 	tree = new octTree(256);
 	uint8 RGB[3];
 	//读取图像中每个像素的颜色，并将其插入颜色八叉树
 	for (int i = 0; i < bi.biHeight; i++)
 	{
-		fseek(fpIn, bf.bfOffBits + i*ceil(biWidth * 3 / 4.) * 4, 0);
+		fseek(fpIn, bf.bfOffBits + i * ceil(biWidth * 3 / 4.) * 4, 0);
 		for (int j = 0; j < bi.biWidth; j++)
 		{
 			//读取一个像素的颜色，并将其插入颜色八叉树
@@ -284,6 +353,7 @@ int main(int argc, char *argv[])
 		}
 	}
 	printf("Success!\n");
+	printf("Leafs: %d\n", leafs);
 
 	//生成并填充调色板
 	printf("Generating palette ... ");
@@ -304,13 +374,13 @@ int main(int argc, char *argv[])
 	pImage = new uint8[biSizeImage];
 	memset(pImage, 0, biSizeImage);
 	for (int i = 0; i < bi.biHeight; i++)
-	{		
-		fseek(fpIn, bf.bfOffBits + i*ceil(biWidth * 3 / 4.) * 4, 0);
+	{
+		fseek(fpIn, bf.bfOffBits + i * ceil(biWidth * 3 / 4.) * 4, 0);
 		for (int j = 0; j < bi.biWidth; j++)
 		{
 			//读取一个像素的颜色，并将其转换位颜色索引值
 			fread(&RGB, 3, 1, fpIn);
-			pImage[i*biFullWidth + j] = selectClosestColor(RGB[2], RGB[1], RGB[0], pRGBQuad);
+			pImage[i * biFullWidth + j] = selectClosestColor(RGB[2], RGB[1], RGB[0], pRGBQuad);
 		}
 	}
 	//输出图象数据
