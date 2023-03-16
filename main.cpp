@@ -104,11 +104,65 @@ uint8 octTree::generatePalette(RGBQUAD *pal)
 void octTree::reduceOctTree() {
 	vector<octNode*> vec;
 	add2vec(vec, this->root);
-	sort(vec.begin(), vec.end(), [](octNode* a, octNode* b) {
-		if (a->depth == b->depth)
-			return a->cnt < b->cnt;
-		return a->depth > b->depth;
-	});
+	while (colors > 256) {
+		sort(vec.begin(), vec.end(), [](octNode* a, octNode* b) {
+			if (a->depth == b->depth)
+				return a->cnt < b->cnt;
+			return a->depth > b->depth;
+		});
+		auto it = vec.begin();
+		if (*it->bro_left != NULL && *it->bro_right != NULL) {
+			if (*it->bro_left->cnt <= *it->bro_right->cnt) {
+				*it->bro_left->bro_right = *it->bro_right;
+				*it->bro_right->bro_left = *it->bro_left;
+				*it->bro_left->cnt += *it->cnt;
+				*it->bro_left->rSum += *it->rSum;
+				*it->bro_left->gSum += *it->gSum;
+				*it->bro_left->bSum += *it->bSum;
+				delete *it;
+				*it = NULL;
+				vec.erase(it);
+			} else {
+				*it->bro_left->bro_right = *it->bro_right;
+				*it->bro_right->bro_left = *it->bro_left;
+				*it->bro_right->cnt += *it->cnt;
+				*it->bro_right->rSum += *it->rSum;
+				*it->bro_right->gSum += *it->gSum;
+				*it->bro_right->bSum += *it->bSum;
+				delete *it;
+				*it = NULL;
+				vec.erase(it);
+			}
+		} else if (*it->bro_left == NULL && *it->bro_right != NULL) {
+			*it->bro_right->bro_left = NULL;
+			*it->bro_right->cnt += *it->cnt;
+			*it->bro_right->rSum += *it->rSum;
+			*it->bro_right->gSum += *it->gSum;
+			*it->bro_right->bSum += *it->bSum;
+			delete *it;
+			*it = NULL;
+			vec.erase(it);
+		} else if (*it->bro_left != NULL && *it->bro_right == NULL) {
+			*it->bro_left->bro_right = NULL;
+			*it->bro_left->cnt += *it->cnt;
+			*it->bro_left->rSum += *it->rSum;
+			*it->bro_left->gSum += *it->gSum;
+			*it->bro_left->bSum += *it->bSum;
+			delete *it;
+			*it = NULL;
+			vec.erase(it);
+		} else {
+			*it->fa->isLeaf = true;
+			*it->fa->cnt += *it->cnt;
+			*it->fa->rSum += *it->rSum;
+			*it->fa->gSum += *it->gSum;
+			*it->fa->bSum += *it->bSum;
+			vec.emplace_back(*it->fa);
+			delete *it;
+			*it = NULL;
+			vec.erase(it);
+		}
+	}
 }
 
 void octTree::add2vec(vector<octNode*>&vec, octNode* node) {
