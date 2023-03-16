@@ -3,6 +3,9 @@
 #include <windows.h>
 #include <cstdio>
 #include <cmath>
+#include <vector>
+#include <algorithm>
+using namespace std;
 
 typedef unsigned char uint8;
 
@@ -12,9 +15,12 @@ struct octNode
 	long long rSum, gSum, bSum;//红色分量、绿色分量、蓝色分量灰度值的和
 	bool isLeaf;//是否是叶子结点
 	int depth;//本节点的深度
+	int pos;
 	octNode* child[8];//8个子结点的指针数组
+	octNode* fa, bro;
 	octNode() = default;
-	octNode(int d) : cnt(1), rSum(0), gSum(0), bSum(0), isLeaf(false), depth(d) {}
+	octNode(int d) : cnt(1), rSum(0), gSum(0), bSum(0), isLeaf(false), depth(d), fa(NULL), bro(NULL) {}	
+	octNode(int d, int r, int g, int b) : cnt(1), rSum(r), gSum(g), bSum(b), isLeaf(true), depth(d), fa(NULL), bro(NULL) {}
 };
 
 class octTree
@@ -30,32 +36,52 @@ private:
 	octNode *root;														//八叉树的根
 	int colors;															//当前的颜色总数
 	int maxColors;														//最大颜色数
+	void reduceOctTree();
+	void add2vec(vector<octNode*>&vec, octNode*);
 };
 
 //释放八叉树的内存空间
 octTree::~octTree()
 {
 	//To do....
-	
+	for (int i = 0; i < 8; i++) {
+		delete root->child[i];
+		root->child[i] = NULL;
+	}
+	delete root;
+	root = NULL;
 }
 
 //往八叉树中添加一个像素的颜色
 void octTree::insertColor(uint8 r, uint8 g, uint8 b)
 {
 	//....
-	this->colors ++;
 	octNode* node = root;
 	for (int i = 7; i >= 0; i--) {
 		int index = ((r >> i) & 0x1) * 4 + ((g >> i) & 0x1) * 2 + ((b >> i) & 0x1);
-		if (node->child[index]->isLeaf) {
+		if (node->child[index] == NULL) {
+			if (i != 0)  {
+				node->child[index] = new octNode(node->depth + 1);
+			}
+			else {
+				node->child[index] = new octNode(node->depth + 1, r, g, b);
+				this->colors ++;
+			}
+			
+			node->child[index]->fa = node;
+			node->child[index]->pos = index;
+			for (int j = index - 1; j >= 0; j--)
+				if (node->child[index] != NULL)
+					node->child[index]->bro = node->child[j];
+		} else {
 			node->child[index]->cnt++;
+		}
+		if (node->child[index]->isLeaf) {
 			node->child[index]->rSum += r;
 			node->child[index]->gSum += g;
 			node->child[index]->bSum += b;
 		}
-		else if (node->child[index] == NULL) {
-			node->child[index] = new octNode(node->depth + 1);
-		}
+		node = node->child[index];
 	}
 }
 
@@ -63,9 +89,31 @@ void octTree::insertColor(uint8 r, uint8 g, uint8 b)
 uint8 octTree::generatePalette(RGBQUAD *pal)
 {
 	//....
+	reduceOctTree();
+	// todo
 	return 0;
 }
 
+void octTree::reduceOctTree() {
+	vector<octNode*> vec;
+	add2vec(vec, this->root);
+	sort(vec.begin(), vec.end(), [](octNode* a, octNode* b) {
+		if (a->depth == b->depth)
+			return a->cnt < b->cnt;
+		return a->depth > b->depth;
+	});
+}
+
+void octTree::add2vec(vector<octNode*>&vec, octNode* node) {
+	if (node == NULL)
+		return;
+	if (node->isLeaf)
+		vec.emplace_back(node);
+	else {
+		for (int i = 0; i < 8; i++)
+			add2vec(vec, node->child[i]);
+	}
+}
 
 //从调色板中选出与给定颜色最接近的颜色
 uint8 selectClosestColor(uint8 r, uint8 g, uint8 b, RGBQUAD *pal)
