@@ -17,10 +17,10 @@ struct octNode
 	int depth;//本节点的深度
 	int pos;
 	octNode* child[8];//8个子结点的指针数组
-	octNode* fa, bro;
+	octNode* fa, bro_left, bro_right;
 	octNode() = default;
-	octNode(int d) : cnt(1), rSum(0), gSum(0), bSum(0), isLeaf(false), depth(d), fa(NULL), bro(NULL) {}	
-	octNode(int d, int r, int g, int b) : cnt(1), rSum(r), gSum(g), bSum(b), isLeaf(true), depth(d), fa(NULL), bro(NULL) {}
+	octNode(int d) : cnt(1), rSum(0), gSum(0), bSum(0), isLeaf(false), depth(d), fa(NULL), bro_left(NULL), bro_right(NULL) {}	
+	octNode(int d, int r, int g, int b) : cnt(1), rSum(r), gSum(g), bSum(b), isLeaf(true), depth(d), fa(NULL), bro_left(NULL), bro_right(NULL) {}
 };
 
 class octTree
@@ -71,8 +71,15 @@ void octTree::insertColor(uint8 r, uint8 g, uint8 b)
 			node->child[index]->fa = node;
 			node->child[index]->pos = index;
 			for (int j = index - 1; j >= 0; j--)
-				if (node->child[index] != NULL)
-					node->child[index]->bro = node->child[j];
+				if (node->child[j] != NULL) {
+					node->child[index]->bro_left = node->child[j];
+					break;
+				}
+			for (int j = index + 1, j < 8; j++)
+				if (node->child[j] != NULL) {
+					node->child[index]->bro_right = node->child[j];
+					break;
+				}
 		} else {
 			node->child[index]->cnt++;
 		}
