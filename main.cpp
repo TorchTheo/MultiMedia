@@ -135,6 +135,10 @@ int octTree::getLeaves(octNode* node) {
 	return c;
 }
 
+/*
+每一次都找到深度最大且像素数最少的节点，将其与兄弟合并，找到左右兄弟中像素数少的一个何其合并。如果没有兄弟节点就与父节点合并同时将父节点设置为叶子节点，同时添加到叶子节点集合中
+*/
+
 void octTree::reduceOctTree() {
 	vector<octNode*> vec;
 	add2vec(vec, this->root);
